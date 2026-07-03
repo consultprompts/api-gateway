@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: auth-database
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: ../auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    env_file:
+      - ../auth-service/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api-gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      - auth-service
+
+volumes:
+  postgres_data:

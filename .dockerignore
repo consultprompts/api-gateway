@@ -1,0 +1,9 @@
+.env
+tmp/
+*.test
+*.out
+vendor/
+.git/
+.gitignore
+.air.toml
+*.md
