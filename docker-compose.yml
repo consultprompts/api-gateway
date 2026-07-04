@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file:
-      - .env
+      - ../auth-service/.env
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -11,6 +11,24 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  agency-postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ../agency-service/.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AGENCY_DB_PASSWORD}
+      POSTGRES_DB: agency-database
+    ports:
+      - "5434:5432"
+    volumes:
+      - agency_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -29,6 +47,20 @@ services:
       postgres:
         condition: service_healthy
 
+  agency-service:
+    build:
+      context: ../agency-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    env_file:
+      - ../agency-service/.env
+    environment:
+      DB_HOST: agency-postgres
+    depends_on:
+      agency-postgres:
+        condition: service_healthy
+
   api-gateway:
     build: .
     ports:
@@ -37,6 +69,8 @@ services:
       - .env
     depends_on:
       - auth-service
+      - agency-service
 
 volumes:
   postgres_data:
+  agency_postgres_data:

@@ -18,6 +18,7 @@ func main() {
 	}
 
 	authServiceURL := os.Getenv("AUTH_SERVICE_URL")
+	agencyServiceURL := os.Getenv("AGENCY_SERVICE_URL")
 
 	jwksClient, err := jwks.NewClient(authServiceURL + "/.well-known/jwks.json")
 	if err != nil {
@@ -31,6 +32,7 @@ func main() {
 	router := gin.New()
 	router.SetTrustedProxies(nil)
 
+	router.Use(middleware.CORS(os.Getenv("FRONTEND_URL")))
 	router.Use(func(c *gin.Context) {
 		c.Next()
 		slog.Info("request",
@@ -66,6 +68,9 @@ func main() {
 		authorized.POST("/auth/roles/assign", proxy.NewReverseProxy(authServiceURL))
 		authorized.POST("/auth/roles/remove", proxy.NewReverseProxy(authServiceURL))
 		authorized.GET("/auth/users/:id", proxy.NewReverseProxy(authServiceURL))
+		authorized.POST("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.GET("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id/status", proxy.NewReverseProxy(agencyServiceURL))
 	}
 
 	port := os.Getenv("PORT")
