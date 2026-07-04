@@ -57,6 +57,7 @@ services:
       - ../agency-service/.env
     environment:
       DB_HOST: agency-postgres
+      DB_PORT: 5432
     depends_on:
       agency-postgres:
         condition: service_healthy
