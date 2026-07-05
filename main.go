@@ -71,6 +71,10 @@ func main() {
 		authorized.POST("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/status", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.GET("/agency/leads/:id/milestones", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads/:id/milestones", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/milestones/:id", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.DELETE("/agency/milestones/:id", proxy.NewReverseProxy(agencyServiceURL))
 	}
 
 	port := os.Getenv("PORT")
