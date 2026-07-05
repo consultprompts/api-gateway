@@ -37,8 +37,8 @@ services:
 
   auth-service:
     build:
-      context: ../auth-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: auth-service/Dockerfile
     expose:
       - "8081"
     env_file:
@@ -49,8 +49,8 @@ services:
 
   agency-service:
     build:
-      context: ../agency-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: agency-service/Dockerfile
     # No host port mapping — reachable only via the api-gateway. This service
     # trusts the X-User-ID / X-User-Roles headers, so it must never be exposed
     # directly to the host.
