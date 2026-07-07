@@ -32,6 +32,14 @@ func main() {
 	router := gin.New()
 	router.SetTrustedProxies(nil)
 
+	// Strip identity headers from every incoming request so they can never be
+	// spoofed by a client — RequireAuth re-sets them after JWT validation.
+	router.Use(func(c *gin.Context) {
+		c.Request.Header.Del("X-User-ID")
+		c.Request.Header.Del("X-User-Roles")
+		c.Next()
+	})
+
 	router.Use(middleware.CORS(os.Getenv("FRONTEND_URL")))
 	router.Use(func(c *gin.Context) {
 		c.Next()
@@ -59,6 +67,8 @@ func main() {
 	router.Any("/auth/verify-email/resend", proxy.NewReverseProxy(authServiceURL))
 	router.Any("/auth/password/reset-request", proxy.NewReverseProxy(authServiceURL))
 	router.Any("/auth/password/reset", proxy.NewReverseProxy(authServiceURL))
+	router.GET("/auth/google/login", proxy.NewReverseProxy(authServiceURL))
+	router.GET("/auth/google/callback", proxy.NewReverseProxy(authServiceURL))
 	router.GET("/.well-known/jwks.json", proxy.NewReverseProxy(authServiceURL))
 
 	authorized := router.Group("/")
@@ -73,6 +83,12 @@ func main() {
 		authorized.GET("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/status", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/milestone", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id/mockup", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id/complete", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads/:id/review", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id/maintenance", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads/:id/pay", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id/launch", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads/:id/milestones", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.POST("/agency/leads/:id/milestones", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/milestones/:id", proxy.NewReverseProxy(agencyServiceURL))
