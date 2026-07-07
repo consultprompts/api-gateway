@@ -37,9 +37,14 @@ func main() {
 
 	// Strip identity headers from every incoming request so they can never be
 	// spoofed by a client — RequireAuth re-sets them after JWT validation.
+	// Forwarding headers are also stripped: the gateway is the trusted edge,
+	// and the reverse proxy re-appends the real client IP to X-Forwarded-For,
+	// which downstream services use for per-IP login lockout.
 	router.Use(func(c *gin.Context) {
 		c.Request.Header.Del("X-User-ID")
 		c.Request.Header.Del("X-User-Roles")
+		c.Request.Header.Del("X-Forwarded-For")
+		c.Request.Header.Del("X-Real-Ip")
 		c.Next()
 	})
 
