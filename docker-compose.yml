@@ -1,6 +1,23 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: ../postgres-jsonlog
+    command: &pg-json-logging
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_destination=jsonlog
+      - -c
+      - log_directory=log
+      - -c
+      - log_filename=postgresql
+      - -c
+      - log_rotation_age=0
+      - -c
+      - log_rotation_size=0
+      - -c
+      - log_truncate_on_rotation=off
     env_file:
       - ../auth-service/.env
     environment:
@@ -18,7 +35,9 @@ services:
       retries: 5
 
   agency-postgres:
-    image: postgres:16-alpine
+    build:
+      context: ../postgres-jsonlog
+    command: *pg-json-logging
     env_file:
       - ../agency-service/.env
     environment:

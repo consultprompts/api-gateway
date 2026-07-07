@@ -13,11 +13,12 @@ direct knowledge of users, products, or courses.
 [Client: browser / mobile app]
         ↓ all requests hit one URL
 [API Gateway :8080]  ← this service
-        ↓ verifies JWT, sets X-User-ID / X-User-Roles headers
+        ↓ strips any incoming X-User-ID / X-User-Roles (anti-spoofing)
+        ↓ verifies JWT, re-sets X-User-ID / X-User-Roles headers
         ↓ routes by URL path
 [Internal microservices]
     auth-service      :8081
-    agency-service    :8082  (not yet built)
+    agency-service    :8082
     products-service  :8083  (not yet built)
     academy-service   :8084  (not yet built)
     orders-service    :8085  (not yet built)
@@ -38,6 +39,7 @@ on a private network, unreachable directly from outside in production.
   before forwarding downstream
 - **Reverse proxy** — forwards requests to the correct internal service based on
   URL path, streams the response back to the client
+- **CORS** — `Access-Control-Allow-Origin` locked to `FRONTEND_URL`, credentials allowed
 - **Global rate limiting** — 10 requests/second per IP, burst of 20
 - **Structured JSON logging** — every request logged with method, path, status, IP
 
@@ -69,12 +71,15 @@ api-gateway/
   internal/
     middleware/
       auth.go                  # JWT verification, trusted header injection
+      cors.go                  # CORS headers, locked to FRONTEND_URL
       rate_limit.go            # global IP-based rate limiting
     proxy/
       proxy.go                 # reverse proxy factory
   pkg/
     jwks/
       jwks.go                  # JWKS fetcher, public key cache, hourly refresh
+    logger/
+      logger.go                # structured JSON slog setup
   .env                         # local secrets (gitignored)
   .env.example                 # template for required environment variables
   Dockerfile
@@ -89,7 +94,10 @@ api-gateway/
 |----------|-------------|---------|
 | PORT | Port the Gateway listens on | 8080 |
 | AUTH_SERVICE_URL | Internal URL of auth-service | http://auth-service:8081 |
-| DB_PASSWORD | Postgres password (used by docker-compose only) | yourpassword |
+| AGENCY_SERVICE_URL | Internal URL of agency-service | http://agency-service:8082 |
+| FRONTEND_URL | Allowed CORS origin for browser clients | http://localhost:3000/ |
+| DB_PASSWORD | auth-service Postgres password (used by docker-compose only) | yourpassword |
+| AGENCY_DB_PASSWORD | agency-service Postgres password (used by docker-compose only) | yourpassword |
 
 ---
 
@@ -108,6 +116,8 @@ api-gateway/
 | POST | /auth/verify-email/resend | auth-service |
 | POST | /auth/password/reset-request | auth-service |
 | POST | /auth/password/reset | auth-service |
+| GET | /auth/google/login | auth-service |
+| GET | /auth/google/callback | auth-service |
 | GET | /.well-known/jwks.json | auth-service |
 
 ### Protected (JWT required)
@@ -118,10 +128,21 @@ api-gateway/
 | POST | /auth/roles/assign | auth-service |
 | POST | /auth/roles/remove | auth-service |
 | GET | /auth/users/:id | auth-service |
+| POST | /agency/leads | agency-service |
+| GET | /agency/leads/mine | agency-service |
+| GET | /agency/leads | agency-service |
+| PATCH | /agency/leads/:id/milestone | agency-service |
+| PATCH | /agency/leads/:id/mockup | agency-service |
+| PATCH | /agency/leads/:id/complete | agency-service |
+| POST | /agency/leads/:id/review | agency-service |
+| PATCH | /agency/leads/:id/maintenance | agency-service |
+| POST | /agency/leads/:id/pay | agency-service |
+| PATCH | /agency/leads/:id/launch | agency-service |
 
 Protected routes verify the JWT at the Gateway level. Downstream services trust
 the `X-User-ID` and `X-User-Roles` headers set by the Gateway — they never
-re-verify the JWT themselves.
+re-verify the JWT themselves. Role-gating for admin-only agency routes
+(e.g. `GET /agency/leads`) happens inside agency-service itself, not at the Gateway.
 
 ---
 
@@ -149,13 +170,21 @@ is running on `:8081` before starting the Gateway, or it will fail to start.
 
 The `docker-compose.yml` in this repo runs the **entire stack**:
 - `postgres` (database for auth-service)
+- `agency-postgres` (separate database for agency-service)
 - `auth-service` (built from `../auth-service`)
+- `agency-service` (built from `../agency-service`, no host port — reachable only via the Gateway)
 - `api-gateway` (this service)
 
-**Prerequisites**: both repos cloned side by side in the same parent folder:
+Both Postgres containers build from `../postgres-jsonlog`, a thin wrapper around
+the stock `postgres` image that tails Postgres's JSON log file to stdout so
+`docker compose logs` shows structured query/connection logs.
+
+**Prerequisites**: all repos cloned side by side in the same parent folder:
 ```
 consultprompts/
   auth-service/
+  agency-service/
+  postgres-jsonlog/
   api-gateway/     ← run docker compose from here
 ```
 
@@ -182,8 +211,11 @@ docker compose down -v
 
 ## Multi-database Plan (as more services are added)
 
-Each microservice will own its own database. The plan is to move to a single root-level
-`.env` file containing credentials for all services:
+Each microservice owns its own database — `auth-service` and `agency-service`
+already run on fully separate Postgres instances (`postgres` / `agency-postgres`
+in `docker-compose.yml`), each with its own credentials in its own `.env`.
+The longer-term plan is to move to a single root-level `.env` file containing
+credentials for all services:
 
 ```
 consultprompts/
@@ -243,17 +275,13 @@ applies automatically to any route registered under the `authorized` group.
 
 ## TODO
 
-### Immediate
-- [ ] Fix Docker Compose Postgres password issue (POSTGRES_PASSWORD mapping)
-- [ ] Full stack Docker test end to end
-
 ### v2.0
 - [ ] Redis-backed rate limiting (multi-instance support)
 - [ ] Request ID header (`X-Request-ID`) for distributed tracing
 - [ ] Circuit breaker (stop forwarding to a repeatedly failing service)
 
 ### Routes to add as services are built
-- [ ] `/agency/*` → agency-service :8082
+- [x] `/agency/*` → agency-service :8082
 - [ ] `/products/*` → products-service :8083
 - [ ] `/academy/*` → academy-service :8084
 - [ ] `/orders/*` → orders-service :8085

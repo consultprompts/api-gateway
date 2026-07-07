@@ -10,9 +10,12 @@ import (
 	"github.com/consultprompts/api-gateway/internal/middleware"
 	"github.com/consultprompts/api-gateway/internal/proxy"
 	"github.com/consultprompts/api-gateway/pkg/jwks"
+	"github.com/consultprompts/api-gateway/pkg/logger"
 )
 
 func main() {
+	logger.Init()
+
 	if err := godotenv.Load(); err != nil {
 		slog.Warn("no .env file found, using existing environment variables")
 	}
@@ -81,7 +84,6 @@ func main() {
 		authorized.POST("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads/mine", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
-		authorized.PATCH("/agency/leads/:id/status", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/milestone", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/mockup", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/complete", proxy.NewReverseProxy(agencyServiceURL))
@@ -89,10 +91,6 @@ func main() {
 		authorized.PATCH("/agency/leads/:id/maintenance", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.POST("/agency/leads/:id/pay", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/launch", proxy.NewReverseProxy(agencyServiceURL))
-		authorized.GET("/agency/leads/:id/milestones", proxy.NewReverseProxy(agencyServiceURL))
-		authorized.POST("/agency/leads/:id/milestones", proxy.NewReverseProxy(agencyServiceURL))
-		authorized.PATCH("/agency/milestones/:id", proxy.NewReverseProxy(agencyServiceURL))
-		authorized.DELETE("/agency/milestones/:id", proxy.NewReverseProxy(agencyServiceURL))
 	}
 
 	port := os.Getenv("PORT")
