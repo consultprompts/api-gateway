@@ -79,6 +79,10 @@ func main() {
 	router.GET("/auth/google/callback", proxy.NewReverseProxy(authServiceURL))
 	router.GET("/.well-known/jwks.json", proxy.NewReverseProxy(authServiceURL))
 
+	// Payment provider webhook — public at the gateway (providers can't send
+	// our JWTs); agency-service verifies its shared secret header instead.
+	router.POST("/webhooks/payment-success", proxy.NewReverseProxy(agencyServiceURL))
+
 	authorized := router.Group("/")
 	authorized.Use(middleware.RequireAuth(jwksClient.PublicKey))
 	{
@@ -96,6 +100,8 @@ func main() {
 		authorized.PATCH("/agency/leads/:id/maintenance", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.POST("/agency/leads/:id/pay", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/launch", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads/:id/request-meeting", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id/suspend", proxy.NewReverseProxy(agencyServiceURL))
 	}
 
 	port := os.Getenv("PORT")
