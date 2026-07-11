@@ -91,6 +91,7 @@ func main() {
 		authorized.POST("/auth/roles/remove", proxy.NewReverseProxy(authServiceURL))
 		authorized.GET("/auth/users/:id", proxy.NewReverseProxy(authServiceURL))
 		authorized.POST("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads/mine", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/milestone", proxy.NewReverseProxy(agencyServiceURL))
