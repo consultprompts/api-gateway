@@ -102,6 +102,7 @@ func main() {
 		authorized.POST("/agency/leads/:id/pay", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/launch", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.POST("/agency/leads/:id/request-meeting", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.GET("/agency/leads/:id/activity", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/suspend", proxy.NewReverseProxy(agencyServiceURL))
 	}
 
