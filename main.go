@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -59,21 +60,52 @@ func main() {
 		)
 	})
 
+	// Cap request bodies well above the largest legitimate payload (5MB logo
+	// upload + form fields) so an oversized POST can't exhaust gateway or
+	// service memory — without this, nothing stops a multi-GB multipart body
+	// from being buffered downstream.
+	const maxBodyBytes = 10 << 20
+	router.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
+		c.Next()
+	})
+
+	// Blanket backstop for all traffic.
 	rateLimiter := middleware.NewRateLimiter(10, 20)
 	router.Use(rateLimiter.Middleware())
+
+	// Tighter per-IP budgets for abuse-prone routes, layered under the
+	// blanket limiter. CORS preflights never reach these — the CORS
+	// middleware answers OPTIONS itself — so they only count real requests.
+	//
+	// emailLimiter is shared across every unauthenticated endpoint that
+	// triggers an outbound email (registration verification, resend, password
+	// reset): one budget covers them combined, so an email bomber can't get
+	// 3x the allowance by rotating endpoints. Generous enough for a real
+	// signup with a couple of resends; caps a bot at ~125 emails/hour/IP
+	// instead of the blanket limiter's ~36,000.
+	emailLimiter := middleware.NewRateLimiter(middleware.PerMinute(2), 5)
+	// Login gets its own bucket (no email cost, and auth-service already
+	// enforces per-IP lockout) so password fumbling can't eat the email budget.
+	loginLimiter := middleware.NewRateLimiter(middleware.PerMinute(10), 10)
+	// Redeem is an oracle for guessing lead IDs; UUIDs are unguessable in
+	// theory, throttled in practice anyway.
+	redeemLimiter := middleware.NewRateLimiter(middleware.PerMinute(5), 10)
+	// Lead writes carry up to 5MB uploads and fan out notification emails.
+	leadWriteLimiter := middleware.NewRateLimiter(middleware.PerMinute(6), 10)
 
 	// public routes
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	router.Any("/auth/register", proxy.NewReverseProxy(authServiceURL))
-	router.Any("/auth/login", proxy.NewReverseProxy(authServiceURL))
+	router.Any("/auth/register", emailLimiter.Middleware(), proxy.NewReverseProxy(authServiceURL))
+	router.Any("/auth/login", loginLimiter.Middleware(), proxy.NewReverseProxy(authServiceURL))
 	router.Any("/auth/refresh", proxy.NewReverseProxy(authServiceURL))
 	router.Any("/auth/logout", proxy.NewReverseProxy(authServiceURL))
 	router.Any("/auth/verify-email", proxy.NewReverseProxy(authServiceURL))
-	router.Any("/auth/verify-email/resend", proxy.NewReverseProxy(authServiceURL))
-	router.Any("/auth/password/reset-request", proxy.NewReverseProxy(authServiceURL))
+	router.Any("/auth/verify-email/resend", emailLimiter.Middleware(), proxy.NewReverseProxy(authServiceURL))
+	router.Any("/auth/password/reset-request", emailLimiter.Middleware(), proxy.NewReverseProxy(authServiceURL))
 	router.Any("/auth/password/reset", proxy.NewReverseProxy(authServiceURL))
 	router.GET("/auth/google/login", proxy.NewReverseProxy(authServiceURL))
 	router.GET("/auth/google/callback", proxy.NewReverseProxy(authServiceURL))
@@ -83,6 +115,10 @@ func main() {
 	// our JWTs); agency-service verifies its shared secret header instead.
 	router.POST("/webhooks/payment-success", proxy.NewReverseProxy(agencyServiceURL))
 
+	// Lead logo — public at the gateway; a plain <img src> can't attach an
+	// Authorization header. See agency-service's handler.GetLeadLogo.
+	router.GET("/agency/leads/:id/logo", proxy.NewReverseProxy(agencyServiceURL))
+
 	authorized := router.Group("/")
 	authorized.Use(middleware.RequireAuth(jwksClient.PublicKey))
 	{
@@ -90,8 +126,10 @@ func main() {
 		authorized.POST("/auth/roles/assign", proxy.NewReverseProxy(authServiceURL))
 		authorized.POST("/auth/roles/remove", proxy.NewReverseProxy(authServiceURL))
 		authorized.GET("/auth/users/:id", proxy.NewReverseProxy(authServiceURL))
-		authorized.POST("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
-		authorized.PATCH("/agency/leads/:id", proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads", leadWriteLimiter.Middleware(), proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads/invite", leadWriteLimiter.Middleware(), proxy.NewReverseProxy(agencyServiceURL))
+		authorized.POST("/agency/leads/redeem", redeemLimiter.Middleware(), proxy.NewReverseProxy(agencyServiceURL))
+		authorized.PATCH("/agency/leads/:id", leadWriteLimiter.Middleware(), proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads/mine", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.GET("/agency/leads", proxy.NewReverseProxy(agencyServiceURL))
 		authorized.PATCH("/agency/leads/:id/milestone", proxy.NewReverseProxy(agencyServiceURL))

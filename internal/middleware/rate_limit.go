@@ -21,6 +21,13 @@ type RateLimiter struct {
 	burst    int
 }
 
+// PerMinute expresses a sustained per-IP allowance in requests per minute —
+// the natural unit for the strict per-route limiters, where rate.Limit's
+// native requests-per-second reads as noise (0.033/s vs 2/min).
+func PerMinute(n float64) rate.Limit {
+	return rate.Limit(n / 60)
+}
+
 func NewRateLimiter(r rate.Limit, burst int) *RateLimiter {
 	rl := &RateLimiter{
 		limiters: make(map[string]*ipLimiter),
